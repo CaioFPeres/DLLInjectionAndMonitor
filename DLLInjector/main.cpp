@@ -101,7 +101,7 @@ int main(int argc, char* argv[])
 {
 
     if (argc != 2) {
-        cout << "Usage: packetlogger processName" << endl;
+        cout << "Usage: DLLInjector.exe processName.exe" << endl;
         return 1;
     }
 

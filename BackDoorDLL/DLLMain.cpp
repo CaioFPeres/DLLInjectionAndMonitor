@@ -40,10 +40,18 @@ fstream recvPipe;
 
 SOCKET lastSocket = INVALID_SOCKET;
 
-// my attempt on writing my own detour function
+// good example of hooking:
+// https://github.com/Zer0Mem0ry/APIHook
+
+// my attempt on writing my own detour function (works, we jump)
 void DetourFunction(BYTE* address, PVOID target) {
     DWORD oldProtect;
     VirtualProtect(address, 5, PAGE_EXECUTE_READWRITE, &oldProtect);
+
+    // we should save the original function before writing a jump to it, BUT
+    //backupSend = (SendFunc)VirtualAlloc(NULL, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    //memcpy(backupSend, &pSend, sizeof(pSend));
+    // it just doesn't work
 
     // Overwrite the first 5 bytes of the function with a jump instruction
     address[0] = 0xE9;
@@ -52,21 +60,17 @@ void DetourFunction(BYTE* address, PVOID target) {
     VirtualProtect(address, 5, oldProtect, &oldProtect);
 }
 
-// my attempt on writing my own undetour function
+// my attempt on writing my own undetour function (doesn't work)
 void UnDetourFunction(BYTE* address, PVOID target) {
-
-    DWORD jmpBackAddy = (BYTE)address + 5;
-
     DWORD oldProtect;
     VirtualProtect(address, 5, PAGE_EXECUTE_READWRITE, &oldProtect);
 
     // Overwrite the first 5 bytes of the function with a jump instruction
     address[0] = 0xE9;
-    *(DWORD*)(address + 1) = jmpBackAddy;
+    *(DWORD*)(address + 1) = (BYTE)address + 5;
 
     VirtualProtect(address, 5, oldProtect, &oldProtect);
 }
-
 
 int GetProcessByName(wstring name)
 {
@@ -104,11 +108,9 @@ HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, NULL, procId);
 int WINAPI our_send(SOCKET s, const char* buf, int len, int flags)
 {
     MessageBox(NULL, L"INTERCEPTED", L"INTERCEPTED", MB_OK);
-
-    UnDetourFunction((BYTE*)pSend, our_send);
     
     // crashing
-    pSend(s, buf, len, flags);
+    backupSend(s, buf, len, flags);
 
     /*
     lastSocket = s;

@@ -18,8 +18,5 @@
     <ClCompile Include="DLLMain.cpp">
       <Filter>Arquivos de Origem</Filter>
     </ClCompile>
-    <ClCompile Include="overwriting_function.cpp">
-      <Filter>Arquivos de Origem</Filter>
-    </ClCompile>
   </ItemGroup>
 </Project>

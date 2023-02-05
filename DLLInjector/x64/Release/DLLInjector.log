@@ -1,9 +1,9 @@
 ﻿  main.cpp
-C:\Users\Caio Peres\source\repos\DLLInjector\DLLInjector\main.cpp(181,16): warning C4101: 'tmp': variável local não referenciada
-C:\Users\Caio Peres\source\repos\DLLInjector\DLLInjector\main.cpp(195,16): warning C4101: 'tmp': variável local não referenciada
+C:\Users\Caio Peres\source\repos\DLLInjector\DLLInjector\main.cpp(185,16): warning C4101: 'tmp': variável local não referenciada
+C:\Users\Caio Peres\source\repos\DLLInjector\DLLInjector\main.cpp(199,16): warning C4101: 'tmp': variável local não referenciada
   Gerando código
   1 of 262 functions ( 0.4%) were compiled, the rest were copied from previous compilation.
     0 functions were new in current compilation
-    0 functions had inline decision re-evaluated but remain unchanged
+    10 functions had inline decision re-evaluated but remain unchanged
   Finalizada a geração de código
   DLLInjector.vcxproj -> C:\Users\Caio Peres\source\repos\DLLInjector\x64\Release\DLLInjector.exe

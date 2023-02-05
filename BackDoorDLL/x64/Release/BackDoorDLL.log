@@ -1,7 +1,15 @@
-﻿  chatGpt_example.cpp
+﻿  DLLMain.cpp
+C:\Users\Caio Peres\source\repos\DLLInjector\BackDoorDLL\DLLMain.cpp(50,44): warning C4311: 'conversão de tipo': truncamento de ponteiro de 'PVOID' para 'DWORD'
+C:\Users\Caio Peres\source\repos\DLLInjector\BackDoorDLL\DLLMain.cpp(50,44): warning C4302: 'conversão de tipo': truncamento de 'PVOID' para 'DWORD'
+C:\Users\Caio Peres\source\repos\DLLInjector\BackDoorDLL\DLLMain.cpp(50,61): warning C4311: 'conversão de tipo': truncamento de ponteiro de 'BYTE *' para 'DWORD'
+C:\Users\Caio Peres\source\repos\DLLInjector\BackDoorDLL\DLLMain.cpp(50,61): warning C4302: 'conversão de tipo': truncamento de 'BYTE *' para 'DWORD'
+C:\Users\Caio Peres\source\repos\DLLInjector\BackDoorDLL\DLLMain.cpp(58,39): warning C4302: 'conversão de tipo': truncamento de 'BYTE *' para 'BYTE'
+C:\Users\Caio Peres\source\repos\DLLInjector\BackDoorDLL\DLLMain.cpp(127,11): warning C4101: 'tmp': variável local não referenciada
+C:\Users\Caio Peres\source\repos\DLLInjector\BackDoorDLL\DLLMain.cpp(142,23): warning C4018: '<': incompatibilidade de signed/unsigned
+C:\Users\Caio Peres\source\repos\DLLInjector\BackDoorDLL\DLLMain.cpp(209,30): warning C4244: '=': conversão de 'std::streamsize' para 'DWORD', possível perda de dados
      Criando biblioteca C:\Users\Caio Peres\source\repos\DLLInjector\x64\Release\BackDoorDLL.lib e objeto C:\Users\Caio Peres\source\repos\DLLInjector\x64\Release\BackDoorDLL.exp
   Gerando código
-  0 of 138 functions ( 0.0%) were compiled, the rest were copied from previous compilation.
+  2 of 190 functions ( 1.1%) were compiled, the rest were copied from previous compilation.
     0 functions were new in current compilation
     0 functions had inline decision re-evaluated but remain unchanged
   Finalizada a geração de código

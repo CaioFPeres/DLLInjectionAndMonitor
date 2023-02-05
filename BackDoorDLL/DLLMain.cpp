@@ -4,6 +4,7 @@
 #include <sstream>
 #include <winsock2.h>
 #include <windows.h>
+#include <tlhelp32.h>
 
 /*
 int WSARecv(
@@ -24,6 +25,7 @@ typedef int (WINAPI* RecvFunc)(SOCKET, char*, int, int);
 typedef int (WINAPI* WSARecvFunc)(SOCKET, LPWSABUF, DWORD, LPDWORD, LPDWORD, LPWSAOVERLAPPED, LPWSAOVERLAPPED_COMPLETION_ROUTINE);
 
 SendFunc pSend = NULL;
+SendFunc backupSend;
 RecvFunc pRecv = NULL;
 WSARecvFunc pWSARecv = NULL;
 
@@ -38,9 +40,77 @@ fstream recvPipe;
 
 SOCKET lastSocket = INVALID_SOCKET;
 
+// my attempt on writing my own detour function
+void DetourFunction(BYTE* address, PVOID target) {
+    DWORD oldProtect;
+    VirtualProtect(address, 5, PAGE_EXECUTE_READWRITE, &oldProtect);
+
+    // Overwrite the first 5 bytes of the function with a jump instruction
+    address[0] = 0xE9;
+    *(DWORD*)(address + 1) = (DWORD)target - (DWORD)address - 5;
+
+    VirtualProtect(address, 5, oldProtect, &oldProtect);
+}
+
+// my attempt on writing my own undetour function
+void UnDetourFunction(BYTE* address, PVOID target) {
+
+    DWORD jmpBackAddy = (BYTE)address + 5;
+
+    DWORD oldProtect;
+    VirtualProtect(address, 5, PAGE_EXECUTE_READWRITE, &oldProtect);
+
+    // Overwrite the first 5 bytes of the function with a jump instruction
+    address[0] = 0xE9;
+    *(DWORD*)(address + 1) = jmpBackAddy;
+
+    VirtualProtect(address, 5, oldProtect, &oldProtect);
+}
+
+
+int GetProcessByName(wstring name)
+{
+    DWORD pid = -1;
+
+    // Create toolhelp snapshot.
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    PROCESSENTRY32 process;
+    ZeroMemory(&process, sizeof(process));
+    process.dwSize = sizeof(process);
+
+    // Walkthrough all processes.
+    if (Process32First(snapshot, &process))
+    {
+        do
+        {
+            // Compare process.szExeFile based on format of name, i.e., trim file path
+            // trim .exe if necessary, etc.
+            if (wstring(process.szExeFile) == name)
+            {
+                pid = process.th32ProcessID;
+                break;
+            }
+        } while (Process32Next(snapshot, &process));
+    }
+
+    CloseHandle(snapshot);
+    return pid;
+}
+
+DWORD procId = GetProcessByName(L"DLLTest.exe");
+HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, NULL, procId);
+
+
 int WINAPI our_send(SOCKET s, const char* buf, int len, int flags)
 {
-    DWORD tmp;
+    MessageBox(NULL, L"INTERCEPTED", L"INTERCEPTED", MB_OK);
+
+    UnDetourFunction((BYTE*)pSend, our_send);
+    
+    // crashing
+    pSend(s, buf, len, flags);
+
+    /*
     lastSocket = s;
     sendPipe.write(buf, len);
     sendPipe.flush();
@@ -50,7 +120,7 @@ int WINAPI our_send(SOCKET s, const char* buf, int len, int flags)
     pSend(s, buf2, sendPipe.gcount(), flags);
     */
     //return len;
-    return pSend(s, buf, len, flags);
+    return 0;
 }
 
 int WINAPI our_recv(SOCKET s, char* buf, int len, int flags)
@@ -82,6 +152,7 @@ DWORD WINAPI transmitter(void*);
 
 extern "C" __declspec(dllexport) BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
 {
+
     switch (fdwReason) {
         case DLL_PROCESS_ATTACH:
             MessageBox(NULL, L"WORKED", L"WORKED", MB_OK);
@@ -104,7 +175,13 @@ extern "C" __declspec(dllexport) BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD
                 MessageBox(NULL, L"Failed to connect recv pipe.", L"Error", MB_OK);
                 return FALSE;
             }
+
+            pSend = (SendFunc)GetProcAddress(hWinsock, "send");
             
+            DetourFunction((BYTE*)pSend, our_send);
+
+            MessageBox(NULL, L"Didn't crash", L"WORKED", MB_OK);
+
             //CreateThread(NULL, 0, transmitter, 0, 0, NULL);
             break;
         case DLL_PROCESS_DETACH:

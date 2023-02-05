@@ -12,6 +12,8 @@ using namespace std;
 
 static void output_packet(char packet[], int len)
 {
+    cout << packet << '\n';
+
     for (int i = 0; i < len; ++i) {
         cout << hex << setw(2) << right << setfill('0') << (int)(unsigned char)packet[i] << " ";
     }
@@ -128,6 +130,9 @@ int main(int argc, char* argv[])
 
     Inject(pid);
 
+    WaitNamedPipe(sendPipeName.c_str(), NMPWAIT_WAIT_FOREVER);
+    WaitNamedPipe(recvPipeName.c_str(), NMPWAIT_WAIT_FOREVER);
+
     if (hSendPipe == INVALID_HANDLE_VALUE) {
         cout << "failed to create send pipe." << endl;
         return 1;
@@ -161,6 +166,7 @@ int main(int argc, char* argv[])
 
     cout << "done." << endl;
     cout << "ready for data." << endl;
+
 
     HANDLE thread1 = CreateThread(NULL, 0, server_to_client, 0, 0, NULL);
     HANDLE thread2 = CreateThread(NULL, 0, client_to_server, 0, 0, NULL);

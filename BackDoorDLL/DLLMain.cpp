@@ -3,8 +3,8 @@
 #include <string>
 #include <sstream>
 #include <winsock2.h>
-#include <windows.h>
-#include <tlhelp32.h>
+#include "../MinHook/include/MinHook.h"
+
 
 /*
 int WSARecv(
@@ -16,6 +16,19 @@ int WSARecv(
   __in     LPWSAOVERLAPPED lpOverlapped,
   __in     LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine
 );
+
+To do:
+
+int WSAAPI WSASend(
+  [in]  SOCKET                             s,
+  [in]  LPWSABUF                           lpBuffers,
+  [in]  DWORD                              dwBufferCount,
+  [out] LPDWORD                            lpNumberOfBytesSent,
+  [in]  DWORD                              dwFlags,
+  [in]  LPWSAOVERLAPPED                    lpOverlapped,
+  [in]  LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine
+);
+
 */
 
 using namespace std;
@@ -24,124 +37,48 @@ typedef int (WINAPI* SendFunc)(SOCKET, const char*, int, int);
 typedef int (WINAPI* RecvFunc)(SOCKET, char*, int, int);
 typedef int (WINAPI* WSARecvFunc)(SOCKET, LPWSABUF, DWORD, LPDWORD, LPDWORD, LPWSAOVERLAPPED, LPWSAOVERLAPPED_COMPLETION_ROUTINE);
 
-SendFunc pSend = NULL;
-SendFunc backupSend;
-RecvFunc pRecv = NULL;
-WSARecvFunc pWSARecv = NULL;
+SendFunc oSend = NULL;
+SendFunc oldSend = NULL;
 
-int WINAPI our_send(SOCKET s, const char* buf, int len, int flags);
-int WINAPI our_recv(SOCKET s, char* buf, int len, int flags);
-int WINAPI our_wsa_recv(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD lpNumberOfBytesRecvd, LPDWORD lpFlags, LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
+RecvFunc oRecv = NULL;
+RecvFunc oldRecv = NULL;
 
-HMODULE hWinsock = GetModuleHandle(L"ws2_32.dll");
+WSARecvFunc oWSARecv = NULL;
+WSARecvFunc oldWSARecv = NULL;
+
+int WINAPI modSend(SOCKET s, const char* buf, int len, int flags);
+int WINAPI modRecv(SOCKET s, char* buf, int len, int flags);
+int WINAPI modWSARecv(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD lpNumberOfBytesRecvd, LPDWORD lpFlags, LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
 
 fstream sendPipe;
 fstream recvPipe;
 
 SOCKET lastSocket = INVALID_SOCKET;
 
-// good example of hooking:
-// https://github.com/Zer0Mem0ry/APIHook
 
-// my attempt on writing my own detour function (works, we jump)
-void DetourFunction(BYTE* address, PVOID target) {
-    DWORD oldProtect;
-    VirtualProtect(address, 5, PAGE_EXECUTE_READWRITE, &oldProtect);
-
-    // we should save the original function before writing a jump to it, BUT
-    //backupSend = (SendFunc)VirtualAlloc(NULL, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-    //memcpy(backupSend, &pSend, sizeof(pSend));
-    // it just doesn't work
-
-    // Overwrite the first 5 bytes of the function with a jump instruction
-    address[0] = 0xE9;
-    *(DWORD*)(address + 1) = (DWORD)target - (DWORD)address - 5;
-
-    VirtualProtect(address, 5, oldProtect, &oldProtect);
-}
-
-// my attempt on writing my own undetour function (doesn't work)
-void UnDetourFunction(BYTE* address, PVOID target) {
-    DWORD oldProtect;
-    VirtualProtect(address, 5, PAGE_EXECUTE_READWRITE, &oldProtect);
-
-    // Overwrite the first 5 bytes of the function with a jump instruction
-    address[0] = 0xE9;
-    *(DWORD*)(address + 1) = (BYTE)address + 5;
-
-    VirtualProtect(address, 5, oldProtect, &oldProtect);
-}
-
-int GetProcessByName(wstring name)
+int WINAPI modSend(SOCKET s, const char* buf, int len, int flags)
 {
-    DWORD pid = -1;
-
-    // Create toolhelp snapshot.
-    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    PROCESSENTRY32 process;
-    ZeroMemory(&process, sizeof(process));
-    process.dwSize = sizeof(process);
-
-    // Walkthrough all processes.
-    if (Process32First(snapshot, &process))
-    {
-        do
-        {
-            // Compare process.szExeFile based on format of name, i.e., trim file path
-            // trim .exe if necessary, etc.
-            if (wstring(process.szExeFile) == name)
-            {
-                pid = process.th32ProcessID;
-                break;
-            }
-        } while (Process32Next(snapshot, &process));
-    }
-
-    CloseHandle(snapshot);
-    return pid;
-}
-
-DWORD procId = GetProcessByName(L"DLLTest.exe");
-HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, NULL, procId);
-
-
-int WINAPI our_send(SOCKET s, const char* buf, int len, int flags)
-{
-    MessageBox(NULL, L"INTERCEPTED", L"INTERCEPTED", MB_OK);
-    
-    // crashing
-    backupSend(s, buf, len, flags);
-
-    /*
     lastSocket = s;
     sendPipe.write(buf, len);
     sendPipe.flush();
-    /*
-    char buf2[len];
-    sendPipe.read(buf2, len);
-    pSend(s, buf2, sendPipe.gcount(), flags);
-    */
-    //return len;
-    return 0;
+    return oSend(s, buf, len, flags);
 }
 
-int WINAPI our_recv(SOCKET s, char* buf, int len, int flags)
+int WINAPI modRecv(SOCKET s, char* buf, int len, int flags)
 {
-    DWORD tmp;
     lastSocket = s;
-    len = pRecv(s, buf, len, flags);
+    len = oRecv(s, buf, len, flags);
     if (len > 0)
     {
         recvPipe.write(buf, len);
         recvPipe.flush();
     }
-    //recvPipe.read(buf, len);
     return len;
 }
 
-int WINAPI our_wsa_recv(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD lpNumberOfBytesRecvd, LPDWORD lpFlags, LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
+int WINAPI modWSARecv(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD lpNumberOfBytesRecvd, LPDWORD lpFlags, LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
 {
-    int x = pWSARecv(s, lpBuffers, dwBufferCount, lpNumberOfBytesRecvd, lpFlags, lpOverlapped, lpCompletionRoutine);
+    int x = oWSARecv(s, lpBuffers, dwBufferCount, lpNumberOfBytesRecvd, lpFlags, lpOverlapped, lpCompletionRoutine);
     for (int i = 0; i < dwBufferCount; ++i) {
         recvPipe.write(lpBuffers[i].buf, lpBuffers[i].len);
         recvPipe.flush();
@@ -157,7 +94,8 @@ extern "C" __declspec(dllexport) BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD
 
     switch (fdwReason) {
         case DLL_PROCESS_ATTACH:
-            MessageBox(NULL, L"WORKED", L"WORKED", MB_OK);
+
+            MessageBox(NULL, L"Injected", L"WORKED", MB_OK);
             // attach to process
             
             DisableThreadLibraryCalls((HMODULE)hinstDLL);
@@ -178,11 +116,20 @@ extern "C" __declspec(dllexport) BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD
                 return FALSE;
             }
 
-            pSend = (SendFunc)GetProcAddress(hWinsock, "send");
-            
-            DetourFunction((BYTE*)pSend, our_send);
+            // Initialize MinHook
+            MH_Initialize();
 
-            MessageBox(NULL, L"Didn't crash", L"WORKED", MB_OK);
+            // Get the address of the original function
+            oldSend = (SendFunc) GetProcAddress(GetModuleHandle(L"ws2_32.dll"), "send");
+            oldRecv = (RecvFunc) GetProcAddress(GetModuleHandle(L"ws2_32.dll"), "recv");
+
+            // Create a hook for the function
+            MH_CreateHook(oldSend, modSend, (LPVOID*) &oSend);
+            MH_CreateHook(oldRecv, modRecv, (LPVOID*) &oRecv);
+
+            // Enable the hook
+            MH_EnableHook(oldSend);
+            MH_EnableHook(oldRecv);
 
             //CreateThread(NULL, 0, transmitter, 0, 0, NULL);
             break;
@@ -216,7 +163,7 @@ DWORD WINAPI transmitter(void*)
         }
         buf[len + 1] = 0;
         if (strcmp(buf, "exit") == 0) { break; }
-        pSend(lastSocket, buf, len, 0);
+        oSend(lastSocket, buf, len, 0);
     }
     return 0;
 }

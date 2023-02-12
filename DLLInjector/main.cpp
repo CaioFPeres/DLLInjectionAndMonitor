@@ -128,7 +128,7 @@ int ReadBinaryFile(string fileName, char** byteArr){
         (*byteArr)[i] = byteVector[i];
     }
 
-    (*byteArr)[byteVector.size()] = '\0';
+    (*byteArr)[byteVector.size()] = '\n';
 
     return byteVector.size() + 1;
 }

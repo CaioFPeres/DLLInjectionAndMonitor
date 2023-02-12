@@ -6,6 +6,7 @@
 #include <winsock2.h>
 #include "../MinHook/include/MinHook.h"
 
+#pragma comment(lib, "ws2_32.lib")
 
 /*
 int WSARecv(
@@ -185,7 +186,7 @@ DWORD WINAPI transmitter(void*) {
     while (true) {
         while (true) {
             transmitterPipe.read(&buff, 1);
-            if (buff == '\0')
+            if (buff == '\n')
                 break;
             vecBuff.push_back(buff);
         }
@@ -196,10 +197,7 @@ DWORD WINAPI transmitter(void*) {
             byteArr[i] = vecBuff[i];
         }
 
-        MessageBox(NULL, to_wstring(vecBuff.size()).c_str(), L"LOG", MB_OK);
-
         oSend(lastSocket, byteArr, vecBuff.size(), NULL);
-
         delete[] byteArr;
         vecBuff.clear();
     
@@ -209,26 +207,3 @@ DWORD WINAPI transmitter(void*) {
         }
     }
 }
-
-/*
-DWORD WINAPI transmitter(void*)
-{
-    char buf[4096];
-    DWORD len;
-    while (1) {
-        transmitterPipe.read(buf, 4096);
-        len = transmitterPipe.gcount();
-        MessageBox(NULL, to_wstring(len).c_str(), L"LOG", MB_OK);
-        
-        if (len == 0) {
-            MessageBox(NULL, L"Connection to send pipe lost.", L"Error", MB_OK);
-            return 1;
-        }
-
-        buf[len] = 0;
-        if (strcmp(buf, "exit") == 0) { break; }
-        oSend(lastSocket, buf, len, 0);
-    }
-    return 0;
-}
-*/

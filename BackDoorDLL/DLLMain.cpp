@@ -2,6 +2,7 @@
 #include <fstream>
 #include <string>
 #include <sstream>
+#include <vector>
 #include <winsock2.h>
 #include "../MinHook/include/MinHook.h"
 
@@ -52,6 +53,7 @@ int WINAPI modWSARecv(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD
 
 fstream sendPipe;
 fstream recvPipe;
+fstream transmitterPipe;
 
 SOCKET lastSocket = INVALID_SOCKET;
 
@@ -78,11 +80,22 @@ int WINAPI modRecv(SOCKET s, char* buf, int len, int flags)
 
 int WINAPI modWSARecv(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD lpNumberOfBytesRecvd, LPDWORD lpFlags, LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
 {
+    lastSocket = s;
     int x = oWSARecv(s, lpBuffers, dwBufferCount, lpNumberOfBytesRecvd, lpFlags, lpOverlapped, lpCompletionRoutine);
+    int diff = *lpNumberOfBytesRecvd;
+
     for (int i = 0; i < dwBufferCount; ++i) {
-        recvPipe.write(lpBuffers[i].buf, lpBuffers[i].len);
-        recvPipe.flush();
+        if (diff > lpBuffers[0].len) {
+            recvPipe.write(lpBuffers[i].buf, lpBuffers[i].len);
+            recvPipe.flush();
+            diff -= lpBuffers[i].len;
+        }
+        else {
+            recvPipe.write(lpBuffers[i].buf, diff);
+            recvPipe.flush();
+        }
     }
+    
     return x;
 }
 
@@ -116,22 +129,34 @@ extern "C" __declspec(dllexport) BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD
                 return FALSE;
             }
 
+            WaitNamedPipe(L"\\\\.\\pipe\\TransmitterPipe", NMPWAIT_WAIT_FOREVER);
+            transmitterPipe.open(L"\\\\.\\pipe\\TransmitterPipe");
+
+            if (!transmitterPipe) {
+                MessageBox(NULL, L"Failed to connect recv pipe.", L"Error", MB_OK);
+                return FALSE;
+            }
+
             // Initialize MinHook
             MH_Initialize();
 
-            // Get the address of the original function
+            // Get the address of the original function:
+            // Uncomment the ones you need to use. They are all working.
             oldSend = (SendFunc) GetProcAddress(GetModuleHandle(L"ws2_32.dll"), "send");
-            oldRecv = (RecvFunc) GetProcAddress(GetModuleHandle(L"ws2_32.dll"), "recv");
+            //oldRecv = (RecvFunc) GetProcAddress(GetModuleHandle(L"ws2_32.dll"), "recv");
+            //oldWSARecv = (WSARecvFunc) GetProcAddress(GetModuleHandle(L"ws2_32.dll"), "WSARecv");
 
             // Create a hook for the function
             MH_CreateHook(oldSend, modSend, (LPVOID*) &oSend);
-            MH_CreateHook(oldRecv, modRecv, (LPVOID*) &oRecv);
+            //MH_CreateHook(oldRecv, modRecv, (LPVOID*) &oRecv);
+            //MH_CreateHook(oldWSARecv, modWSARecv, (LPVOID*)&oWSARecv);
 
             // Enable the hook
             MH_EnableHook(oldSend);
-            MH_EnableHook(oldRecv);
+            //MH_EnableHook(oldRecv);
+            //MH_EnableHook(oldWSARecv);
 
-            //CreateThread(NULL, 0, transmitter, 0, 0, NULL);
+            CreateThread(NULL, NULL, transmitter, NULL, NULL, NULL);
             break;
         case DLL_PROCESS_DETACH:
             // detach from process
@@ -150,20 +175,60 @@ extern "C" __declspec(dllexport) BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD
     return TRUE; // succesful
 }
 
+
+DWORD WINAPI transmitter(void*) {
+    
+    char buff;
+    char* byteArr;
+    vector<char> vecBuff;
+
+    while (true) {
+        while (true) {
+            transmitterPipe.read(&buff, 1);
+            if (buff == '\0')
+                break;
+            vecBuff.push_back(buff);
+        }
+
+        byteArr = new char[vecBuff.size()];
+
+        for (int i = 0; i < vecBuff.size(); i++) {
+            byteArr[i] = vecBuff[i];
+        }
+
+        MessageBox(NULL, to_wstring(vecBuff.size()).c_str(), L"LOG", MB_OK);
+
+        oSend(lastSocket, byteArr, vecBuff.size(), NULL);
+
+        delete[] byteArr;
+        vecBuff.clear();
+    
+        if (transmitterPipe.eof()) {
+            MessageBox(NULL, L"Connection to send pipe lost.", L"Error", MB_OK);
+            return 1;
+        }
+    }
+}
+
+/*
 DWORD WINAPI transmitter(void*)
 {
     char buf[4096];
     DWORD len;
     while (1) {
-        sendPipe.read(buf, 4095);
-        len = sendPipe.gcount();
+        transmitterPipe.read(buf, 4096);
+        len = transmitterPipe.gcount();
+        MessageBox(NULL, to_wstring(len).c_str(), L"LOG", MB_OK);
+        
         if (len == 0) {
             MessageBox(NULL, L"Connection to send pipe lost.", L"Error", MB_OK);
             return 1;
         }
-        buf[len + 1] = 0;
+
+        buf[len] = 0;
         if (strcmp(buf, "exit") == 0) { break; }
         oSend(lastSocket, buf, len, 0);
     }
     return 0;
 }
+*/

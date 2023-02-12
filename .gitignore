@@ -1,1 +1,6 @@
 .vs
+BackDoorDLL/Debug/
+BackDoorDLL/x64
+DLLInjector/Debug/
+DLLInjector/x64
+Debug/

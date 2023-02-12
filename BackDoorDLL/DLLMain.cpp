@@ -197,7 +197,8 @@ DWORD WINAPI transmitter(void*) {
             byteArr[i] = vecBuff[i];
         }
 
-        oSend(lastSocket, byteArr, vecBuff.size(), NULL);
+        // If you dont get the return value, the function just won't work, and i dont know why.
+        int num = oSend(lastSocket, byteArr, vecBuff.size(), NULL);
         delete[] byteArr;
         vecBuff.clear();
     

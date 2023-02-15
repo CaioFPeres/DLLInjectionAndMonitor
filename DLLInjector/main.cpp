@@ -122,15 +122,15 @@ int ReadBinaryFile(string fileName, char** byteArr){
         byteVector.push_back(sc);
     }
 
-    *byteArr = new char[byteVector.size() + 1];
+    *byteArr = new char[byteVector.size()]; // + 1
 
     for (int i = 0; i < byteVector.size(); i++) {
         (*byteArr)[i] = byteVector[i];
     }
 
-    (*byteArr)[byteVector.size()] = '\n';
+    //(*byteArr)[byteVector.size()] = '\n';
 
-    return byteVector.size() + 1;
+    return byteVector.size(); // + 1
 }
 
 
@@ -210,7 +210,7 @@ int main(int argc, char* argv[])
     cout << "Connecting transmitter pipe... ";
 
     if (TransmitterPipe == INVALID_HANDLE_VALUE) {
-        cout << "failed to create recv pipe." << endl;
+        cout << "failed to create TransmitterPipe." << endl;
         return 1;
     }
 
@@ -223,7 +223,7 @@ int main(int argc, char* argv[])
 
     if (!ConnectNamedPipe(TransmitterPipe, NULL)) {
         if (GetLastError() != ERROR_PIPE_CONNECTED) {
-            cout << "failed to connect client to recv pipe." << endl;
+            cout << "failed to connect client to TransmitterPipe." << endl;
             return 1;
         }
     }

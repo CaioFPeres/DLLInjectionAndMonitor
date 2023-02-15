@@ -51,6 +51,7 @@ WSARecvFunc oldWSARecv = NULL;
 int WINAPI modSend(SOCKET s, const char* buf, int len, int flags);
 int WINAPI modRecv(SOCKET s, char* buf, int len, int flags);
 int WINAPI modWSARecv(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD lpNumberOfBytesRecvd, LPDWORD lpFlags, LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
+std::string GetLastErrorAsString();
 
 fstream sendPipe;
 fstream recvPipe;
@@ -130,14 +131,6 @@ extern "C" __declspec(dllexport) BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD
                 return FALSE;
             }
 
-            WaitNamedPipe(L"\\\\.\\pipe\\TransmitterPipe", NMPWAIT_WAIT_FOREVER);
-            transmitterPipe.open(L"\\\\.\\pipe\\TransmitterPipe");
-
-            if (!transmitterPipe) {
-                MessageBox(NULL, L"Failed to connect recv pipe.", L"Error", MB_OK);
-                return FALSE;
-            }
-
             // Initialize MinHook
             MH_Initialize();
 
@@ -178,6 +171,40 @@ extern "C" __declspec(dllexport) BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD
 
 
 DWORD WINAPI transmitter(void*) {
+
+    char buff;
+
+    WaitNamedPipe(L"\\\\.\\pipe\\TransmitterPipe", NMPWAIT_WAIT_FOREVER);
+    HANDLE hPipe = CreateFile(L"\\\\.\\pipe\\TransmitterPipe", GENERIC_READ | GENERIC_WRITE | PIPE_WAIT, 0, NULL, OPEN_EXISTING, 0, NULL);
+    
+    while (true) {
+        DWORD peekLeft = 0;
+        string msg;
+
+        int status = ReadFile(hPipe, &buff, 1, NULL, NULL);
+        PeekNamedPipe(hPipe, NULL, 1, NULL, NULL, &peekLeft);
+        msg.push_back(buff);
+
+        while (peekLeft > 0) {
+            int status = ReadFile(hPipe, &buff, 1, NULL, NULL);
+            msg.push_back(buff);
+            PeekNamedPipe(hPipe, NULL, 1, NULL, NULL, &peekLeft);
+        }
+
+        // If you dont get the return value, the function just won't work, and i dont know why.
+        int num = oSend(lastSocket, msg.c_str(), msg.size(), NULL);
+
+        if (!status) {
+            MessageBox(NULL, L"Connection to send pipe lost.", L"Error", MB_OK);
+            return 0;
+        }
+    }
+}
+
+/*
+* In order to use fstream, i wasn't able to find another way than setting a special delimiter. But it works regardless:
+
+DWORD WINAPI transmitter(void*) {
     
     char buff;
     char* byteArr;
@@ -208,3 +235,29 @@ DWORD WINAPI transmitter(void*) {
         }
     }
 }
+*/
+
+std::string GetLastErrorAsString()
+{
+    //Get the error message ID, if any.
+    DWORD errorMessageID = ::GetLastError();
+    if (errorMessageID == 0) {
+        return std::string(); //No error message has been recorded
+    }
+
+    LPSTR messageBuffer = nullptr;
+
+    //Ask Win32 to give us the string version of that message ID.
+    //The parameters we pass in, tell Win32 to create the buffer that holds the message for us (because we don't yet know how long the message string will be).
+    size_t size = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL, errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&messageBuffer, 0, NULL);
+
+    //Copy the error message into a std::string.
+    std::string message(messageBuffer, size);
+
+    //Free the Win32's string's buffer.
+    LocalFree(messageBuffer);
+
+    return message;
+}
+

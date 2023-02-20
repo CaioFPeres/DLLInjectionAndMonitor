@@ -10,28 +10,7 @@
 
 using namespace std;
 
-static void output_packet(const char* packet, int len, fstream* file, int option)
-{
-    if (option == 1) {
-        cout.write("\n\nClient --> Server", 19);
-        file->write("PClient --> Server", 19);
-    }
-    else {
-        cout.write("\n\nServer --> Client", 19);
-        file->write("PServer --> Client", 19);
-    }
-
-    cout << '\n' << packet << '\n';
-    
-    for (int i = 0; i < len; ++i) {
-        // This line should print the correct hexadecimal representation. It is currently causing an undefined behaviour: it is modifying the contents read by ReadBinaryFile.
-        //cout << hex << setw(2) << right << setfill('0') << (int)(unsigned char)packet[i] << " ";
-        file->write((const char*) &packet[i], 1);
-    }
-
-    file->flush();
-}
-
+string GetLastErrorAsString();
 DWORD WINAPI server_to_client(LPVOID);
 DWORD WINAPI client_to_server(LPVOID);
 
@@ -161,9 +140,10 @@ int main(int argc, char* argv[])
     wcout << "transmitter pipe name: " << transmitterPipeName << endl;
     wcout << "Creating pipes\n";
 
-    hSendPipe = CreateNamedPipe(sendPipeName.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, 1, 4096, 4096, 0, NULL);
-    hRecvPipe = CreateNamedPipe(recvPipeName.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, 1, 4096, 4096, 0, NULL);
-    TransmitterPipe = CreateNamedPipe(transmitterPipeName.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, 1, 4096, 4096, 0, NULL); // BYTE MODE
+    // BYTE MODE
+    hSendPipe = CreateNamedPipe(sendPipeName.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, 1, 4096, 4096, 0, NULL);
+    hRecvPipe = CreateNamedPipe(recvPipeName.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, 1, 4096, 4096, 0, NULL);
+    TransmitterPipe = CreateNamedPipe(transmitterPipeName.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, 1, 4096, 4096, 0, NULL);
 
     Inject(pid);
 
@@ -241,13 +221,13 @@ int main(int argc, char* argv[])
     while (true) {
 
         int a = 0;
-        cout << len << '\n';
         cin >> a;
         cin.clear();
         cin.ignore(INT_MAX, '\n');
 
         DWORD bytesWritten;
         WriteFile(TransmitterPipe, byteArr, len, &bytesWritten, NULL);
+        cout << "Sent: " << bytesWritten << " bytes" << '\n';
     }
 
     free(byteArr);
@@ -268,62 +248,88 @@ int main(int argc, char* argv[])
 
 }
 
-DWORD WINAPI server_to_client(LPVOID param)
+int ReadPipeLoop(fstream* file, HANDLE pipe, int option)
 {
-    fstream* file = (fstream*)param;
-
     while (true) {
         char buff = 0;
         DWORD bytesAvailable = 0;
         string msg;
 
-        int status = ReadFile(hRecvPipe, &buff, 1, NULL, NULL);
+        int status = ReadFile(pipe, &buff, 1, NULL, NULL);
         msg.push_back(buff);
-        PeekNamedPipe(hRecvPipe, NULL, 1, NULL, &bytesAvailable, NULL);
+        PeekNamedPipe(pipe, NULL, 1, NULL, &bytesAvailable, NULL);
 
         while (bytesAvailable > 0) {
-            int status = ReadFile(hRecvPipe, &buff, 1, NULL, NULL);
+            int status = ReadFile(pipe, &buff, 1, NULL, NULL);
             msg.push_back(buff);
             bytesAvailable--;
         }
 
-        output_packet(msg.c_str(), msg.size(), file, 2);
-
         if (!status) {
-            MessageBox(NULL, L"Connection to send pipe lost.", L"Error", MB_OK);
             return 0;
         }
-    }
 
-    return 0;
+
+        if (option == 1) {
+            cout.write("\n\nClient --> Server", 19);
+            file->write("PClient --> Server", 19);
+        }
+        else {
+            cout.write("\n\nServer --> Client", 19);
+            file->write("PServer --> Client", 19);
+        }
+
+        cout << '\n' << msg << '\n';
+        file->write(msg.c_str(), msg.size());
+
+        /*
+        for (int i = 0; i < msg.size(); ++i) {
+            // This line should print the correct hexadecimal representation. It is currently causing an undefined behaviour: it is modifying the contents read by ReadBinaryFile.
+            cout << hex << setw(2) << right << setfill('0') << (int)(unsigned char)packet[i] << " ";
+        }
+        */
+        
+        file->flush();
+    }
 }
+
 
 DWORD WINAPI client_to_server(LPVOID param)
 {
     fstream* file = (fstream*)param;
+    if(!ReadPipeLoop(file, hSendPipe, 1))
+        MessageBox(NULL, L"Connection to send pipe lost.", L"Error", MB_OK);
+    return 0;
+}
 
-    while (true) {
-        char buff = 0;
-        DWORD bytesAvailable = 0;
-        string msg;
+DWORD WINAPI server_to_client(LPVOID param)
+{
+    fstream* file = (fstream*)param;
+    if(!ReadPipeLoop(file, hRecvPipe, 2))
+        MessageBox(NULL, L"Connection to recv pipe lost.", L"Error", MB_OK);
+    return 0;
+}
 
-        int status = ReadFile(hSendPipe, &buff, 1, NULL, NULL);
-        msg.push_back(buff);
-        PeekNamedPipe(hSendPipe, NULL, 1, NULL, &bytesAvailable, NULL);
-
-        while (bytesAvailable > 0) {
-            int status = ReadFile(hSendPipe, &buff, 1, NULL, NULL);
-            msg.push_back(buff);
-            bytesAvailable--;
-        }
-
-        output_packet(msg.c_str(), msg.size(), file, 1);
-
-        if (!status) {
-            MessageBox(NULL, L"Connection to send pipe lost.", L"Error", MB_OK);
-            return 0;
-        }
+string GetLastErrorAsString()
+{
+    //Get the error message ID, if any.
+    DWORD errorMessageID = ::GetLastError();
+    if (errorMessageID == 0) {
+        return std::string(); //No error message has been recorded
     }
 
-    return 0;
+    LPSTR messageBuffer = nullptr;
+
+    //Ask Win32 to give us the string version of that message ID.
+    //The parameters we pass in, tell Win32 to create the buffer that holds the message for us (because we don't yet know how long the message string will be).
+    size_t size = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL, errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&messageBuffer, 0, NULL);
+
+    //Copy the error message into a std::string.
+    std::string message(messageBuffer, size);
+
+    //Free the Win32's string's buffer.
+    LocalFree(messageBuffer);
+
+    return message;
 }

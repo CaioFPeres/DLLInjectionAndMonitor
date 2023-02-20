@@ -55,7 +55,6 @@ std::string GetLastErrorAsString();
 
 fstream sendPipe;
 fstream recvPipe;
-fstream transmitterPipe;
 
 SOCKET lastSocket = INVALID_SOCKET;
 
@@ -176,19 +175,19 @@ DWORD WINAPI transmitter(void*) {
 
     WaitNamedPipe(L"\\\\.\\pipe\\TransmitterPipe", NMPWAIT_WAIT_FOREVER);
     HANDLE hPipe = CreateFile(L"\\\\.\\pipe\\TransmitterPipe", GENERIC_READ | GENERIC_WRITE | PIPE_WAIT, 0, NULL, OPEN_EXISTING, 0, NULL);
-    
+
     while (true) {
-        DWORD peekLeft = 0;
+        DWORD bytesAvailable = 0;
         string msg;
 
         int status = ReadFile(hPipe, &buff, 1, NULL, NULL);
-        PeekNamedPipe(hPipe, NULL, 1, NULL, NULL, &peekLeft);
         msg.push_back(buff);
+        PeekNamedPipe(hPipe, NULL, 1, NULL, &bytesAvailable, NULL);
 
-        while (peekLeft > 0) {
+        while (bytesAvailable > 0) {
             int status = ReadFile(hPipe, &buff, 1, NULL, NULL);
             msg.push_back(buff);
-            PeekNamedPipe(hPipe, NULL, 1, NULL, NULL, &peekLeft);
+            bytesAvailable--;
         }
 
         // If you dont get the return value, the function just won't work, and i dont know why.
@@ -201,8 +200,10 @@ DWORD WINAPI transmitter(void*) {
     }
 }
 
+
 /*
-* In order to use fstream, i wasn't able to find another way than setting a special delimiter. But it works regardless:
+* In order to use fstream, i wasn't able to find another way than setting a special delimiter. It also works, but im not using because a byte could end up being
+  the same as the delimiter.
 
 DWORD WINAPI transmitter(void*) {
     

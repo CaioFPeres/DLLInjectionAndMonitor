@@ -10,22 +10,22 @@
 
 using namespace std;
 
-static void output_packet(char packet[], int len, fstream* file, int option)
+static void output_packet(const char* packet, int len, fstream* file, int option)
 {
-
     if (option == 1) {
-        cout << "\n\nClient --> Server";
+        cout.write("\n\nClient --> Server", 19);
         file->write("PClient --> Server", 19);
     }
     else {
-        cout << "\n\nServer --> Client";
+        cout.write("\n\nServer --> Client", 19);
         file->write("PServer --> Client", 19);
     }
 
-    cout << '\n';
+    cout << '\n' << packet << '\n';
     
-    for (int i = 0; i < len; ++i) {        
-        cout << hex << setw(2) << right << setfill('0') << (int)(unsigned char)packet[i] << " ";
+    for (int i = 0; i < len; ++i) {
+        // This line should print the correct hexadecimal representation. It is currently causing an undefined behaviour: it is modifying the contents read by ReadBinaryFile.
+        //cout << hex << setw(2) << right << setfill('0') << (int)(unsigned char)packet[i] << " ";
         file->write((const char*) &packet[i], 1);
     }
 
@@ -112,8 +112,7 @@ void Inject(int pid) {
     return;
 }
 
-
-int ReadBinaryFile(string fileName, char** byteArr){
+int ReadBinaryFile(string fileName, char** byteArr) {
     char sc;
     vector<char> byteVector;
     fstream packetFile(fileName, fstream::in | fstream::binary);
@@ -121,16 +120,15 @@ int ReadBinaryFile(string fileName, char** byteArr){
     while (packetFile.get(sc)) {
         byteVector.push_back(sc);
     }
-
-    *byteArr = new char[byteVector.size()]; // + 1
+    
+    *byteArr = new char[byteVector.size()];
 
     for (int i = 0; i < byteVector.size(); i++) {
         (*byteArr)[i] = byteVector[i];
     }
 
-    //(*byteArr)[byteVector.size()] = '\n';
-
-    return byteVector.size(); // + 1
+    packetFile.close();
+    return byteVector.size();
 }
 
 
@@ -163,9 +161,9 @@ int main(int argc, char* argv[])
     wcout << "transmitter pipe name: " << transmitterPipeName << endl;
     wcout << "Creating pipes\n";
 
-    hSendPipe = CreateNamedPipe(sendPipeName.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, 1, 4096, 4096, 0, NULL); //| FILE_FLAG_OVERLAPPED, PIPE_UNLIMITED_INSTANCES
+    hSendPipe = CreateNamedPipe(sendPipeName.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, 1, 4096, 4096, 0, NULL);
     hRecvPipe = CreateNamedPipe(recvPipeName.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, 1, 4096, 4096, 0, NULL);
-    TransmitterPipe = CreateNamedPipe(transmitterPipeName.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, 1, 4096, 4096, 0, NULL);
+    TransmitterPipe = CreateNamedPipe(transmitterPipeName.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, 1, 4096, 4096, 0, NULL); // BYTE MODE
 
     Inject(pid);
 
@@ -237,26 +235,22 @@ int main(int argc, char* argv[])
     HANDLE thread1 = CreateThread(NULL, NULL, server_to_client, (LPVOID) outputFile, NULL, NULL);
     HANDLE thread2 = CreateThread(NULL, NULL, client_to_server, (LPVOID) outputFile, NULL, NULL);
 
+    char* byteArr;
+    int len = ReadBinaryFile("sendPacket.pak", &byteArr);
+    
     while (true) {
-        
-        int a;
+
+        int a = 0;
+        cout << len << '\n';
         cin >> a;
         cin.clear();
         cin.ignore(INT_MAX, '\n');
 
-
-        char* byteArr;
-        int len = ReadBinaryFile("sendPacket.pak", &byteArr);
-
-        /*
-        for (int i = 0; i < len; ++i) {
-            cout << hex << setw(2) << right << setfill('0') << (int)(unsigned char) byteArr[i] << " ";
-        }
-        */
-
-        WriteFile(TransmitterPipe, byteArr, len, NULL, NULL);
-        free(byteArr);
+        DWORD bytesWritten;
+        WriteFile(TransmitterPipe, byteArr, len, &bytesWritten, NULL);
     }
+
+    free(byteArr);
 
     //while (WaitForSingleObject(thread1, 1000) != WAIT_OBJECT_0) {}
     //while (WaitForSingleObject(thread2, 1000) != WAIT_OBJECT_0) {}
@@ -278,11 +272,27 @@ DWORD WINAPI server_to_client(LPVOID param)
 {
     fstream* file = (fstream*)param;
 
-    char buf[4096];
-    int len = 0;
-    while (1) {
-        if (!ReadFile(hRecvPipe, buf, 4096, (LPDWORD) &len, NULL)) { break;}
-        output_packet(buf, len, file, 2);
+    while (true) {
+        char buff = 0;
+        DWORD bytesAvailable = 0;
+        string msg;
+
+        int status = ReadFile(hRecvPipe, &buff, 1, NULL, NULL);
+        msg.push_back(buff);
+        PeekNamedPipe(hRecvPipe, NULL, 1, NULL, &bytesAvailable, NULL);
+
+        while (bytesAvailable > 0) {
+            int status = ReadFile(hRecvPipe, &buff, 1, NULL, NULL);
+            msg.push_back(buff);
+            bytesAvailable--;
+        }
+
+        output_packet(msg.c_str(), msg.size(), file, 2);
+
+        if (!status) {
+            MessageBox(NULL, L"Connection to send pipe lost.", L"Error", MB_OK);
+            return 0;
+        }
     }
 
     return 0;
@@ -292,11 +302,28 @@ DWORD WINAPI client_to_server(LPVOID param)
 {
     fstream* file = (fstream*)param;
 
-    char buf[4096];
-    int len = 0;
-    while (1) {
-        if (!ReadFile(hSendPipe, buf, 4096, (LPDWORD) &len, NULL)) { break;}
-        output_packet(buf, len, file, 1);
+    while (true) {
+        char buff = 0;
+        DWORD bytesAvailable = 0;
+        string msg;
+
+        int status = ReadFile(hSendPipe, &buff, 1, NULL, NULL);
+        msg.push_back(buff);
+        PeekNamedPipe(hSendPipe, NULL, 1, NULL, &bytesAvailable, NULL);
+
+        while (bytesAvailable > 0) {
+            int status = ReadFile(hSendPipe, &buff, 1, NULL, NULL);
+            msg.push_back(buff);
+            bytesAvailable--;
+        }
+
+        output_packet(msg.c_str(), msg.size(), file, 1);
+
+        if (!status) {
+            MessageBox(NULL, L"Connection to send pipe lost.", L"Error", MB_OK);
+            return 0;
+        }
     }
+
     return 0;
 }

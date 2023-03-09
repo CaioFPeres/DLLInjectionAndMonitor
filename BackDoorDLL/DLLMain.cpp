@@ -37,7 +37,8 @@ using namespace std;
 
 typedef int (WINAPI* SendFunc)(SOCKET, const char*, int, int);
 typedef int (WINAPI* RecvFunc)(SOCKET, char*, int, int);
-typedef int (WINAPI* WSARecvFunc)(SOCKET, LPWSABUF, DWORD, LPDWORD, LPDWORD, LPWSAOVERLAPPED, LPWSAOVERLAPPED_COMPLETION_ROUTINE);
+typedef int (WSAAPI* WSASendFunc)(SOCKET, LPWSABUF, DWORD, LPDWORD, DWORD, LPWSAOVERLAPPED, LPWSAOVERLAPPED_COMPLETION_ROUTINE);
+typedef int (WSAAPI* WSARecvFunc)(SOCKET, LPWSABUF, DWORD, LPDWORD, LPDWORD, LPWSAOVERLAPPED, LPWSAOVERLAPPED_COMPLETION_ROUTINE);
 
 SendFunc oSend = NULL;
 SendFunc oldSend = NULL;
@@ -45,18 +46,115 @@ SendFunc oldSend = NULL;
 RecvFunc oRecv = NULL;
 RecvFunc oldRecv = NULL;
 
+WSASendFunc oWSASend = NULL;
+WSASendFunc oldWSASend = NULL;
+
 WSARecvFunc oWSARecv = NULL;
 WSARecvFunc oldWSARecv = NULL;
 
 int WINAPI modSend(SOCKET s, const char* buf, int len, int flags);
 int WINAPI modRecv(SOCKET s, char* buf, int len, int flags);
+int WINAPI modWSASend(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD lpNumberOfBytesSent, DWORD dwFlags, LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
 int WINAPI modWSARecv(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD lpNumberOfBytesRecvd, LPDWORD lpFlags, LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
-std::string GetLastErrorAsString();
 
 fstream sendPipe;
 fstream recvPipe;
 
 SOCKET lastSocket = INVALID_SOCKET;
+
+
+std::string GetLastErrorAsString()
+{
+    //Get the error message ID, if any.
+    DWORD errorMessageID = ::GetLastError();
+    if (errorMessageID == 0) {
+        return std::string(); //No error message has been recorded
+    }
+
+    LPSTR messageBuffer = nullptr;
+
+    //Ask Win32 to give us the string version of that message ID.
+    //The parameters we pass in, tell Win32 to create the buffer that holds the message for us (because we don't yet know how long the message string will be).
+    size_t size = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL, errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&messageBuffer, 0, NULL);
+
+    //Copy the error message into a std::string.
+    std::string message(messageBuffer, size);
+
+    //Free the Win32's string's buffer.
+    LocalFree(messageBuffer);
+
+    return message;
+}
+
+
+DWORD WINAPI SendTransmitter(void*) {
+
+    char buff;
+
+    WaitNamedPipe(L"\\\\.\\pipe\\TransmitterPipe", NMPWAIT_WAIT_FOREVER);
+    HANDLE hPipe = CreateFile(L"\\\\.\\pipe\\TransmitterPipe", GENERIC_READ | GENERIC_WRITE | PIPE_WAIT, 0, NULL, OPEN_EXISTING, 0, NULL);
+
+    while (true) {
+        DWORD bytesAvailable = 0;
+        string msg;
+
+        int status = ReadFile(hPipe, &buff, 1, NULL, NULL);
+        msg.push_back(buff);
+        PeekNamedPipe(hPipe, NULL, 1, NULL, &bytesAvailable, NULL);
+
+        while (bytesAvailable > 0) {
+            int status = ReadFile(hPipe, &buff, 1, NULL, NULL);
+            msg.push_back(buff);
+            bytesAvailable--;
+        }
+
+        // If you dont get the return value, the function just won't work, and i dont know why.
+        int num = oSend(lastSocket, msg.c_str(), msg.size(), NULL);
+
+        if (!status) {
+            MessageBox(NULL, L"Connection to send pipe lost.", L"Error", MB_OK);
+            return 0;
+        }
+    }
+}
+
+DWORD WINAPI WSASendTransmitter(void*) {
+
+    char buff;
+
+    WaitNamedPipe(L"\\\\.\\pipe\\TransmitterPipe", NMPWAIT_WAIT_FOREVER);
+    HANDLE hPipe = CreateFile(L"\\\\.\\pipe\\TransmitterPipe", GENERIC_READ | GENERIC_WRITE | PIPE_WAIT, 0, NULL, OPEN_EXISTING, 0, NULL);
+
+    while (true) {
+        DWORD bytesAvailable = 0;
+        string msg;
+
+        int status = ReadFile(hPipe, &buff, 1, NULL, NULL);
+        msg.push_back(buff);
+        PeekNamedPipe(hPipe, NULL, 1, NULL, &bytesAvailable, NULL);
+
+        while (bytesAvailable > 0) {
+            int status = ReadFile(hPipe, &buff, 1, NULL, NULL);
+            msg.push_back(buff);
+            bytesAvailable--;
+        }
+
+        WSABUF WSAbuff = {};
+        DWORD lpNumberOfBytesSent = 0;
+
+        WSAbuff.len = msg.size();
+        WSAbuff.buf = (CHAR*) msg.c_str();
+
+        // If you dont get the return value, the function just won't work, and i dont know why.
+        int num = oWSASend(lastSocket, &WSAbuff, 1, &lpNumberOfBytesSent, NULL, NULL, NULL);
+        
+        if (!status) {
+            MessageBox(NULL, L"Connection to send pipe lost.", L"Error", MB_OK);
+            return 0;
+        }
+    }
+}
 
 
 int WINAPI modSend(SOCKET s, const char* buf, int len, int flags)
@@ -79,6 +177,27 @@ int WINAPI modRecv(SOCKET s, char* buf, int len, int flags)
     return len;
 }
 
+int WINAPI modWSASend(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD lpNumberOfBytesSent, DWORD dwFlags, LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
+{
+    lastSocket = s;
+
+    int diff = *lpNumberOfBytesSent;
+
+    for (int i = 0; i < dwBufferCount; ++i) {
+        if (diff > lpBuffers[0].len) {
+            recvPipe.write(lpBuffers[i].buf, lpBuffers[i].len);
+            recvPipe.flush();
+            diff -= lpBuffers[i].len;
+        }
+        else {
+            recvPipe.write(lpBuffers[i].buf, diff);
+            recvPipe.flush();
+        }
+    }
+
+    return oWSASend(s, lpBuffers, dwBufferCount, lpNumberOfBytesSent, dwFlags, lpOverlapped, lpCompletionRoutine);
+}
+
 int WINAPI modWSARecv(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD lpNumberOfBytesRecvd, LPDWORD lpFlags, LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
 {
     lastSocket = s;
@@ -96,11 +215,9 @@ int WINAPI modWSARecv(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD
             recvPipe.flush();
         }
     }
-    
+
     return x;
 }
-
-DWORD WINAPI transmitter(void*);
 
 
 extern "C" __declspec(dllexport) BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
@@ -136,20 +253,24 @@ extern "C" __declspec(dllexport) BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD
             // Get the address of the original function:
             // Uncomment the ones you need to use. They are all working.
             oldSend = (SendFunc) GetProcAddress(GetModuleHandle(L"ws2_32.dll"), "send");
-            //oldRecv = (RecvFunc) GetProcAddress(GetModuleHandle(L"ws2_32.dll"), "recv");
-            //oldWSARecv = (WSARecvFunc) GetProcAddress(GetModuleHandle(L"ws2_32.dll"), "WSARecv");
+            oldRecv = (RecvFunc) GetProcAddress(GetModuleHandle(L"ws2_32.dll"), "recv");
+            oldWSASend = (WSASendFunc) GetProcAddress(GetModuleHandle(L"ws2_32.dll"), "WSASend");
+            oldWSARecv = (WSARecvFunc) GetProcAddress(GetModuleHandle(L"ws2_32.dll"), "WSARecv");
 
             // Create a hook for the function
             MH_CreateHook(oldSend, modSend, (LPVOID*) &oSend);
             //MH_CreateHook(oldRecv, modRecv, (LPVOID*) &oRecv);
+            MH_CreateHook(oldWSASend, modWSASend, (LPVOID*)&oWSASend);
             //MH_CreateHook(oldWSARecv, modWSARecv, (LPVOID*)&oWSARecv);
 
             // Enable the hook
             MH_EnableHook(oldSend);
             //MH_EnableHook(oldRecv);
+            MH_EnableHook(oldWSASend);
             //MH_EnableHook(oldWSARecv);
 
-            CreateThread(NULL, NULL, transmitter, NULL, NULL, NULL);
+            CreateThread(NULL, NULL, WSASendTransmitter, NULL, NULL, NULL);
+
             break;
         case DLL_PROCESS_DETACH:
             // detach from process
@@ -166,38 +287,6 @@ extern "C" __declspec(dllexport) BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD
     }
 
     return TRUE; // succesful
-}
-
-
-DWORD WINAPI transmitter(void*) {
-
-    char buff;
-
-    WaitNamedPipe(L"\\\\.\\pipe\\TransmitterPipe", NMPWAIT_WAIT_FOREVER);
-    HANDLE hPipe = CreateFile(L"\\\\.\\pipe\\TransmitterPipe", GENERIC_READ | GENERIC_WRITE | PIPE_WAIT, 0, NULL, OPEN_EXISTING, 0, NULL);
-
-    while (true) {
-        DWORD bytesAvailable = 0;
-        string msg;
-
-        int status = ReadFile(hPipe, &buff, 1, NULL, NULL);
-        msg.push_back(buff);
-        PeekNamedPipe(hPipe, NULL, 1, NULL, &bytesAvailable, NULL);
-
-        while (bytesAvailable > 0) {
-            int status = ReadFile(hPipe, &buff, 1, NULL, NULL);
-            msg.push_back(buff);
-            bytesAvailable--;
-        }
-
-        // If you dont get the return value, the function just won't work, and i dont know why.
-        int num = oSend(lastSocket, msg.c_str(), msg.size(), NULL);
-
-        if (!status) {
-            MessageBox(NULL, L"Connection to send pipe lost.", L"Error", MB_OK);
-            return 0;
-        }
-    }
 }
 
 
@@ -237,28 +326,4 @@ DWORD WINAPI transmitter(void*) {
     }
 }
 */
-
-std::string GetLastErrorAsString()
-{
-    //Get the error message ID, if any.
-    DWORD errorMessageID = ::GetLastError();
-    if (errorMessageID == 0) {
-        return std::string(); //No error message has been recorded
-    }
-
-    LPSTR messageBuffer = nullptr;
-
-    //Ask Win32 to give us the string version of that message ID.
-    //The parameters we pass in, tell Win32 to create the buffer that holds the message for us (because we don't yet know how long the message string will be).
-    size_t size = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-        NULL, errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&messageBuffer, 0, NULL);
-
-    //Copy the error message into a std::string.
-    std::string message(messageBuffer, size);
-
-    //Free the Win32's string's buffer.
-    LocalFree(messageBuffer);
-
-    return message;
-}
 

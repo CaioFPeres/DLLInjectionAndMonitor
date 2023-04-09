@@ -52,8 +52,12 @@ int GetProcessByName(wstring name)
 void Inject(int pid) {
     HANDLE processHandle;
     PVOID remoteBuffer;
-    char dllPath[] = "C:\\Users\\Caio Peres\\source\\repos\\DLLInjector\\Debug\\BackDoorDLL.dll";
-    unsigned int dllLen = sizeof(dllPath) + 1;
+    char dllPath[] = "BackDoorDLL.dll";
+    char fullFilename[MAX_PATH];
+
+    // needs to be the full path, since the application will be running in another folder than this application
+    GetFullPathNameA(dllPath, MAX_PATH, fullFilename, nullptr);
+    int dllLen = strlen(fullFilename);
 
     cout << "Injecting DLL to PID: " + to_string(pid) << '\n';
     processHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
@@ -64,7 +68,7 @@ void Inject(int pid) {
         return;
     }
 
-    if (WriteProcessMemory(processHandle, remoteBuffer, dllPath, dllLen, NULL) == false) {
+    if (WriteProcessMemory(processHandle, remoteBuffer, fullFilename, dllLen, NULL) == false) {
         printf("\t[FAILURE]  Failed to write the dll path into memory.\n");
         return;
     }
@@ -257,6 +261,7 @@ int ReadPipeLoop(fstream* file, HANDLE pipe, int option)
 
         int status = ReadFile(pipe, &buff, 1, NULL, NULL);
         msg.push_back(buff);
+
         PeekNamedPipe(pipe, NULL, 1, NULL, &bytesAvailable, NULL);
 
         while (bytesAvailable > 0) {
@@ -279,6 +284,7 @@ int ReadPipeLoop(fstream* file, HANDLE pipe, int option)
             file->write("PServer --> Client", 19);
         }
 
+        cout << " [" + to_string(msg.length()) + "]";
         cout << '\n' << msg << '\n';
         file->write(msg.c_str(), msg.size());
 

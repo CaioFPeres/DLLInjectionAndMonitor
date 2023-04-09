@@ -3,6 +3,7 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <codecvt>
 #include <winsock2.h>
 #include "../MinHook/include/MinHook.h"
 
@@ -57,8 +58,11 @@ int WINAPI modRecv(SOCKET s, char* buf, int len, int flags);
 int WINAPI modWSASend(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD lpNumberOfBytesSent, DWORD dwFlags, LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
 int WINAPI modWSARecv(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD lpNumberOfBytesRecvd, LPDWORD lpFlags, LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
 
-fstream sendPipe;
-fstream recvPipe;
+HANDLE hSendPipe = INVALID_HANDLE_VALUE;
+HANDLE hRecvPipe = INVALID_HANDLE_VALUE;
+
+bool usingWSASend = false;
+bool usingWSARecv = false;
 
 SOCKET lastSocket = INVALID_SOCKET;
 
@@ -93,7 +97,7 @@ DWORD WINAPI SendTransmitter(void*) {
     char buff;
 
     WaitNamedPipe(L"\\\\.\\pipe\\TransmitterPipe", NMPWAIT_WAIT_FOREVER);
-    HANDLE hPipe = CreateFile(L"\\\\.\\pipe\\TransmitterPipe", GENERIC_READ | GENERIC_WRITE | PIPE_WAIT, 0, NULL, OPEN_EXISTING, 0, NULL);
+    HANDLE hPipe = CreateFile(L"\\\\.\\pipe\\TransmitterPipe", GENERIC_READ | GENERIC_WRITE, PIPE_WAIT, NULL, OPEN_EXISTING, 0, NULL);
 
     while (true) {
         DWORD bytesAvailable = 0;
@@ -109,48 +113,24 @@ DWORD WINAPI SendTransmitter(void*) {
             bytesAvailable--;
         }
 
-        // If you dont get the return value, the function just won't work, and i dont know why.
-        int num = oSend(lastSocket, msg.c_str(), msg.size(), NULL);
+        if (usingWSASend) {
+            WSABUF WSAbuff = {};
+            DWORD lpNumberOfBytesSent = 0;
 
-        if (!status) {
-            MessageBox(NULL, L"Connection to send pipe lost.", L"Error", MB_OK);
-            return 0;
+            WSAbuff.len = msg.size();
+            WSAbuff.buf = (CHAR*)msg.c_str();
+
+            // If you dont get the return value, the function just won't work, and i dont know why.
+            int num = oWSASend(lastSocket, &WSAbuff, 1, &lpNumberOfBytesSent, NULL, NULL, NULL);
         }
-    }
-}
-
-DWORD WINAPI WSASendTransmitter(void*) {
-
-    char buff;
-
-    WaitNamedPipe(L"\\\\.\\pipe\\TransmitterPipe", NMPWAIT_WAIT_FOREVER);
-    HANDLE hPipe = CreateFile(L"\\\\.\\pipe\\TransmitterPipe", GENERIC_READ | GENERIC_WRITE | PIPE_WAIT, 0, NULL, OPEN_EXISTING, 0, NULL);
-
-    while (true) {
-        DWORD bytesAvailable = 0;
-        string msg;
-
-        int status = ReadFile(hPipe, &buff, 1, NULL, NULL);
-        msg.push_back(buff);
-        PeekNamedPipe(hPipe, NULL, 1, NULL, &bytesAvailable, NULL);
-
-        while (bytesAvailable > 0) {
-            int status = ReadFile(hPipe, &buff, 1, NULL, NULL);
-            msg.push_back(buff);
-            bytesAvailable--;
+        else {
+            // If you dont get the return value, the function just won't work, and i dont know why.
+            int num = oSend(lastSocket, msg.c_str(), msg.size(), NULL);
         }
 
-        WSABUF WSAbuff = {};
-        DWORD lpNumberOfBytesSent = 0;
 
-        WSAbuff.len = msg.size();
-        WSAbuff.buf = (CHAR*) msg.c_str();
-
-        // If you dont get the return value, the function just won't work, and i dont know why.
-        int num = oWSASend(lastSocket, &WSAbuff, 1, &lpNumberOfBytesSent, NULL, NULL, NULL);
-        
         if (!status) {
-            MessageBox(NULL, L"Connection to send pipe lost.", L"Error", MB_OK);
+            MessageBox(NULL, L"Connection to transmitter pipe lost.", L"Error", MB_OK);
             return 0;
         }
     }
@@ -160,8 +140,11 @@ DWORD WINAPI WSASendTransmitter(void*) {
 int WINAPI modSend(SOCKET s, const char* buf, int len, int flags)
 {
     lastSocket = s;
-    sendPipe.write(buf, len);
-    sendPipe.flush();
+    DWORD bytesWritten;
+    if (!usingWSASend) {
+        WriteFile(hSendPipe, buf, len, &bytesWritten, NULL);
+        FlushFileBuffers(hSendPipe);
+    }
     return oSend(s, buf, len, flags);
 }
 
@@ -169,29 +152,33 @@ int WINAPI modRecv(SOCKET s, char* buf, int len, int flags)
 {
     lastSocket = s;
     len = oRecv(s, buf, len, flags);
-    if (len > 0)
+    DWORD bytesWritten;
+    if (!usingWSARecv && len > 0)
     {
-        recvPipe.write(buf, len);
-        recvPipe.flush();
+        WriteFile(hRecvPipe, buf, len, &bytesWritten, NULL);
+        FlushFileBuffers(hRecvPipe);
     }
+
     return len;
 }
 
 int WINAPI modWSASend(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD lpNumberOfBytesSent, DWORD dwFlags, LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
 {
     lastSocket = s;
+    usingWSASend = true;
 
     int diff = *lpNumberOfBytesSent;
+    DWORD bytesWritten;
 
     for (int i = 0; i < dwBufferCount; ++i) {
         if (diff > lpBuffers[0].len) {
-            recvPipe.write(lpBuffers[i].buf, lpBuffers[i].len);
-            recvPipe.flush();
+            WriteFile(hSendPipe, lpBuffers[i].buf, lpBuffers[i].len, &bytesWritten, NULL);
+            FlushFileBuffers(hSendPipe);
             diff -= lpBuffers[i].len;
         }
         else {
-            recvPipe.write(lpBuffers[i].buf, diff);
-            recvPipe.flush();
+            WriteFile(hSendPipe, lpBuffers[i].buf, diff, &bytesWritten, NULL);
+            FlushFileBuffers(hSendPipe);
         }
     }
 
@@ -201,18 +188,25 @@ int WINAPI modWSASend(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD
 int WINAPI modWSARecv(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount, LPDWORD lpNumberOfBytesRecvd, LPDWORD lpFlags, LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
 {
     lastSocket = s;
+    usingWSARecv = true;
     int x = oWSARecv(s, lpBuffers, dwBufferCount, lpNumberOfBytesRecvd, lpFlags, lpOverlapped, lpCompletionRoutine);
+    
+    // This will never trigger. But if you don't verify, it will result in undefined behaviour.
+    if (x != 0)
+        return x;
+
     int diff = *lpNumberOfBytesRecvd;
+    DWORD bytesWritten;
 
     for (int i = 0; i < dwBufferCount; ++i) {
         if (diff > lpBuffers[0].len) {
-            recvPipe.write(lpBuffers[i].buf, lpBuffers[i].len);
-            recvPipe.flush();
+            WriteFile(hRecvPipe, lpBuffers[i].buf, lpBuffers[i].len, &bytesWritten, NULL);
+            FlushFileBuffers(hRecvPipe);
             diff -= lpBuffers[i].len;
         }
         else {
-            recvPipe.write(lpBuffers[i].buf, diff);
-            recvPipe.flush();
+            WriteFile(hRecvPipe, lpBuffers[i].buf, diff, &bytesWritten, NULL);
+            FlushFileBuffers(hRecvPipe);
         }
     }
 
@@ -232,17 +226,17 @@ extern "C" __declspec(dllexport) BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD
             DisableThreadLibraryCalls((HMODULE)hinstDLL);
             
             WaitNamedPipe(L"\\\\.\\pipe\\ConquerSendPipe", NMPWAIT_WAIT_FOREVER);
-            sendPipe.open(L"\\\\.\\pipe\\ConquerSendPipe");
+            hSendPipe = CreateFile(L"\\\\.\\pipe\\ConquerSendPipe", PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, NULL, OPEN_EXISTING, 0, NULL);
             
-            if (!sendPipe) {
+            if (!hSendPipe) {
                 MessageBox(NULL, L"Failed to connect send pipe.", L"Error", MB_OK);
                 return FALSE;
             }
 
             WaitNamedPipe(L"\\\\.\\pipe\\ConquerRecvPipe", NMPWAIT_WAIT_FOREVER);
-            recvPipe.open(L"\\\\.\\pipe\\ConquerRecvPipe");
+            hRecvPipe = CreateFile(L"\\\\.\\pipe\\ConquerRecvPipe", PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, NULL, OPEN_EXISTING, 0, NULL);
 
-            if (!recvPipe) {
+            if (!hRecvPipe) {
                 MessageBox(NULL, L"Failed to connect recv pipe.", L"Error", MB_OK);
                 return FALSE;
             }
@@ -251,7 +245,6 @@ extern "C" __declspec(dllexport) BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD
             MH_Initialize();
 
             // Get the address of the original function:
-            // Uncomment the ones you need to use. They are all working.
             oldSend = (SendFunc) GetProcAddress(GetModuleHandle(L"ws2_32.dll"), "send");
             oldRecv = (RecvFunc) GetProcAddress(GetModuleHandle(L"ws2_32.dll"), "recv");
             oldWSASend = (WSASendFunc) GetProcAddress(GetModuleHandle(L"ws2_32.dll"), "WSASend");
@@ -259,17 +252,17 @@ extern "C" __declspec(dllexport) BOOL APIENTRY DllMain(HINSTANCE hinstDLL, DWORD
 
             // Create a hook for the function
             MH_CreateHook(oldSend, modSend, (LPVOID*) &oSend);
-            //MH_CreateHook(oldRecv, modRecv, (LPVOID*) &oRecv);
+            MH_CreateHook(oldRecv, modRecv, (LPVOID*) &oRecv);
             MH_CreateHook(oldWSASend, modWSASend, (LPVOID*)&oWSASend);
-            //MH_CreateHook(oldWSARecv, modWSARecv, (LPVOID*)&oWSARecv);
+            MH_CreateHook(oldWSARecv, modWSARecv, (LPVOID*)&oWSARecv);
 
             // Enable the hook
             MH_EnableHook(oldSend);
-            //MH_EnableHook(oldRecv);
+            MH_EnableHook(oldRecv);
             MH_EnableHook(oldWSASend);
-            //MH_EnableHook(oldWSARecv);
+            MH_EnableHook(oldWSARecv);
 
-            CreateThread(NULL, NULL, WSASendTransmitter, NULL, NULL, NULL);
+            CreateThread(NULL, NULL, SendTransmitter, NULL, NULL, NULL);
 
             break;
         case DLL_PROCESS_DETACH:

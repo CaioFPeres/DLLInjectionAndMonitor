@@ -1,11 +1,1 @@
-﻿  DLLMain.cpp
-C:\Users\Caio Peres\source\repos\DLLInjector\BackDoorDLL\DLLMain.cpp(82,23): warning C4018: '<': incompatibilidade de signed/unsigned
-C:\Users\Caio Peres\source\repos\DLLInjector\BackDoorDLL\DLLMain.cpp(159,30): warning C4244: '=': conversão de 'std::streamsize' para 'DWORD', possível perda de dados
-     Criando biblioteca C:\Users\Caio Peres\source\repos\DLLInjector\x64\Release\BackDoorDLL.lib e objeto C:\Users\Caio Peres\source\repos\DLLInjector\x64\Release\BackDoorDLL.exp
-LINK : warning LNK4098: defaultlib 'LIBCMTD' conflita com uso de outras bibliotecas; use /NODEFAULTLIB:library
-  Gerando código
-  1 of 139 functions ( 0.7%) were compiled, the rest were copied from previous compilation.
-    0 functions were new in current compilation
-    0 functions had inline decision re-evaluated but remain unchanged
-  Finalizada a geração de código
-  BackDoorDLL.vcxproj -> C:\Users\Caio Peres\source\repos\DLLInjector\x64\Release\BackDoorDLL.dll
+﻿  BackDoorDLL.vcxproj -> C:\Users\Caio\source\repos\DLLInjectionAndMonitor\x64\Release\BackDoorDLL.dll

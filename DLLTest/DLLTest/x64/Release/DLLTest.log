@@ -1,8 +1,8 @@
 ﻿  Client.cpp
-C:\Users\Caio Peres\source\repos\DLLTest\DLLTest\Client.cpp(39,53): warning C4267: 'argumento': conversão de 'size_t' para 'int', possível perda de dados
-  Gerando código
-  0 of 110 functions ( 0.0%) were compiled, the rest were copied from previous compilation.
+C:\Users\Caio\source\repos\DLLInjectionAndMonitor\DLLTest\DLLTest\Client.cpp(38,51): warning C4267: 'argument': conversion from 'size_t' to 'int', possible loss of data
+  Generating code
+  0 of 109 functions ( 0.0%) were compiled, the rest were copied from previous compilation.
     0 functions were new in current compilation
     0 functions had inline decision re-evaluated but remain unchanged
-  Finalizada a geração de código
-  DLLTest.vcxproj -> C:\Users\Caio Peres\source\repos\DLLTest\x64\Release\DLLTest.exe
+  Finished generating code
+  DLLTest.vcxproj -> C:\Users\Caio\source\repos\DLLInjectionAndMonitor\DLLTest\x64\Release\DLLTest.exe

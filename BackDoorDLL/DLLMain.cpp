@@ -70,7 +70,7 @@ SOCKET lastSocket = INVALID_SOCKET;
 std::string GetLastErrorAsString()
 {
     //Get the error message ID, if any.
-    DWORD errorMessageID = ::GetLastError();
+    DWORD errorMessageID = GetLastError();
     if (errorMessageID == 0) {
         return std::string(); //No error message has been recorded
     }

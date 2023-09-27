@@ -1,9 +1,10 @@
-﻿  main.cpp
-C:\Users\Caio Peres\source\repos\DLLInjector\DLLInjector\main.cpp(192,16): warning C4101: 'tmp': variável local não referenciada
-C:\Users\Caio Peres\source\repos\DLLInjector\DLLInjector\main.cpp(206,16): warning C4101: 'tmp': variável local não referenciada
-  Gerando código
-  4 of 262 functions ( 1.5%) were compiled, the rest were copied from previous compilation.
+﻿  Window.cpp
+C:\Users\Caio\source\repos\DLLInjectionAndMonitor\DLLInjector\PipeManager.h(47,3): warning C4091: 'typedef ': ignored on left of 'PipeManager::tParam' when no variable is declared
+C:\Users\Caio\source\repos\DLLInjectionAndMonitor\DLLInjector\Window.h(39,6): warning C4091: 'typedef ': ignored on left of 'Window::tParam' when no variable is declared
+C:\Users\Caio\source\repos\DLLInjectionAndMonitor\DLLInjector\Window.cpp(106,53): warning C4267: 'argument': conversion from 'size_t' to 'int', possible loss of data
+  Generating code
+  2 of 380 functions ( 0.5%) were compiled, the rest were copied from previous compilation.
     0 functions were new in current compilation
-    0 functions had inline decision re-evaluated but remain unchanged
-  Finalizada a geração de código
-  DLLInjector.vcxproj -> C:\Users\Caio Peres\source\repos\DLLInjector\x64\Release\DLLInjector.exe
+    4 functions had inline decision re-evaluated but remain unchanged
+  Finished generating code
+  DLLInjector.vcxproj -> C:\Users\Caio\source\repos\DLLInjectionAndMonitor\x64\Release\DLLInjector.exe

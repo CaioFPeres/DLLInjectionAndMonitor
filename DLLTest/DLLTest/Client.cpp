@@ -35,5 +35,5 @@ void Client::Connect() {
 
 
 void Client::Send(string msg) {
-    send(client_socket, msg.c_str(), msg.length(), 0);
+    send(client_socket, msg.c_str(), msg.length() + 1, 0);
 }

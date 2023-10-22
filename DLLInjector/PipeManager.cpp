@@ -140,7 +140,7 @@ void PipeManager::Listen(LPVOID param) {
     CloseHandle(manager->TransmitterPipe);
 }
 
-void PipeManager::Send(const char* byteArr, int len) {
+void PipeManager::Send(const unsigned char* byteArr, int len) {
     DWORD bytesWritten;
     WriteFile(TransmitterPipe, byteArr, len, &bytesWritten, NULL);
 }
@@ -183,19 +183,21 @@ int PipeManager::ReadPipeLoop(int option)
         }
 
         msgHeader += " [" + std::to_string(msg.length()) + "]\r\n";
+
+        std::stringstream ssPacket;
+        
+        for (int i = 0; i < msg.size(); ++i) {
+            // This line should print the correct hexadecimal representation. It was previously causing an undefined behaviour: modifying the contents read by ReadBinaryFile.
+            // It seems that its not anymore, but beware.
+            ssPacket << std::hex << std::setw(2) << std::right << std::setfill('0') << (int)(unsigned char)msg[i] << " ";
+        }
+
         
         if(winRef->isReceiving())
-            this->winRef->AppendText(0, msgHeader + msg + "\r\n\r\n");
+            this->winRef->AppendText(0, msgHeader + ssPacket.str() + "\r\n\r\n");
         
         outputFile.write(msg.c_str(), msg.size());
 
-        /*
-        for (int i = 0; i < msg.size(); ++i) {
-            // This line should print the correct hexadecimal representation. It is currently causing an undefined behaviour: it is modifying the contents read by ReadBinaryFile.
-            cout << hex << setw(2) << right << setfill('0') << (int)(unsigned char)packet[i] << " ";
-        }
-        */
-        
         outputFile.flush();
     }
 }

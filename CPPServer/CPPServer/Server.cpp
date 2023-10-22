@@ -38,7 +38,7 @@ void Server::Listen() {
             res += buff;
 
             if (buff == '\0') {
-                cout << res << "\n\n";
+                cout << res << "\n";
                 res.clear();
             }
         }

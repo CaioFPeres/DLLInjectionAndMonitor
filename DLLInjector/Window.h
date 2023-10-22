@@ -16,7 +16,9 @@ public:
     HWND TextBoxes[2];
     wstring TextBoxesContent[2];
 
-    HWND StaticControl; // label
+    HWND recvLabel;
+    HWND sendLabel;
+    HWND sendDecoded;
 
     HWND recvButton; 
     HWND sendButton;
@@ -26,6 +28,7 @@ public:
 
     Window(HINSTANCE hInst, HINSTANCE hInstPrev, std::string procName);
     void AppendText(int index, string text);
+    vector<unsigned char> HexStringToByte(string hexString);
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     LRESULT CALLBACK realWndProc(UINT msg, WPARAM wParam, LPARAM lParam);
     void WindowMessageLoop();
@@ -42,6 +45,8 @@ private:
     PipeManager* manager;
     bool receiving = false;
 
+    string GetControlString(HWND control);
+    wstring GetControlWString(HWND control);
     void CreateControls();
     int _RegisterClass();
 

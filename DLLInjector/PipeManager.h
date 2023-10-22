@@ -36,7 +36,7 @@ public:
 
 	wstring GetLastErrorAsString();
 	static DWORD Intercept(LPVOID param);
-	void Send(const char* byteArr, int len);
+	void Send(const unsigned char* byteArr, int len);
 	static void Listen(LPVOID param);
 
 private:

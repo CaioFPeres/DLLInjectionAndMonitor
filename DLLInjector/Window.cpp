@@ -70,7 +70,7 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 LRESULT CALLBACK Window::realWndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    RECT rect;
+    RECT rect; DWORD a;
 
     switch (msg)
     {
@@ -83,27 +83,37 @@ LRESULT CALLBACK Window::realWndProc(UINT msg, WPARAM wParam, LPARAM lParam)
 
         case WM_COMMAND:
         {
-            if ((HWND)lParam == this->recvButton)
+            if ((HWND)lParam == TextBoxes[1] && HIWORD(wParam) == EN_CHANGE) {
+
+                vector<unsigned char> data = HexStringToByte(GetControlString(TextBoxes[1]));
+
+                string toBeConverted;
+                for (int i = 0; i < data.size(); i++)
+                    toBeConverted.push_back(data[i]);
+
+                std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+                wstring wBytes = converter.from_bytes(toBeConverted);
+                
+                SetWindowText(sendDecoded, wBytes.c_str());
+            }
+
+            if ((HWND)lParam == recvButton)
             {
                 if (receiving) {
                     receiving = false;
-                    SetWindowText(this->recvButton, L"Receive");
+                    SetWindowText(recvButton, L"Receive");
                 }
                 else {
                     receiving = true;
-                    SetWindowText(this->recvButton, L"STOP");
+                    SetWindowText(recvButton, L"STOP");
                 }
             }
 
-            if ((HWND)lParam == this->sendButton) {
-                int len = GetWindowTextLength(TextBoxes[1]);
-                vector<wchar_t> temp(len + 1, ' ');
-                GetWindowText(TextBoxes[1], temp.data(), len + 1); // + 1 for god knows why
+            if ((HWND)lParam == sendButton) {
 
-                std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-                std::string text = converter.to_bytes(temp.data());
+                vector<unsigned char> data = HexStringToByte(GetControlString(TextBoxes[1]));
 
-                manager->Send(text.data(), text.size());
+                manager->Send(data.data(), data.size());
             }
 
             break;
@@ -135,18 +145,63 @@ LRESULT CALLBACK Window::realWndProc(UINT msg, WPARAM wParam, LPARAM lParam)
     return 0;
 }
 
+string Window::GetControlString(HWND control) {
+    int len = GetWindowTextLength(control);
+    vector<wchar_t> temp(len + 1, ' ');
+    GetWindowText(control, temp.data(), len + 1); // + 1 for god knows why
+
+    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+    std::string text = converter.to_bytes(temp.data());
+
+    return text;
+}
+
+wstring Window::GetControlWString(HWND control) {
+    int len = GetWindowTextLength(control);
+    vector<wchar_t> temp(len + 1, ' ');
+    GetWindowText(control, temp.data(), len + 1); // + 1 for god knows why
+
+    wstring text(temp.data());
+
+    return text;
+}
+
+vector<unsigned char> Window::HexStringToByte(string hexString) {
+    
+    char hexPair[2] = {0};
+    int k = 0;
+    vector<unsigned char> result;
+
+    for (int i = 0; i < hexString.size(); i++) {
+        if (hexString[i] != ' ' && k < 2) {
+            hexPair[k++] = hexString[i];
+        }
+        else {
+            if( k == 2)
+                result.push_back((int) strtol(hexPair, NULL, 16));
+            
+            k = 0;
+        }
+    }
+
+    return result;
+
+}
+
 void Window::CreateControls() {
     RECT rect;
     GetClientRect(this->hwndMain, &rect);
 
-    TextBoxes[0] = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT("Edit"), NULL, WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL, rect.left + 30, rect.top + 30, 300, 300, this->hwndMain, NULL, NULL, NULL);
-    TextBoxes[1] = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT("Edit"), NULL, WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL, rect.left + 400, rect.top + 30, 300, 300, this->hwndMain, NULL, NULL, NULL);
+    TextBoxes[0] = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT("Edit"), NULL, WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL, rect.left + 30, rect.top + 30, 300, 200, this->hwndMain, NULL, NULL, NULL);
+    TextBoxes[1] = CreateWindowEx(WS_EX_CLIENTEDGE, TEXT("Edit"), NULL, WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL, rect.left + 400, rect.top + 30, 300, 200, this->hwndMain, NULL, NULL, NULL);
     
-    StaticControl = CreateWindowEx(NULL, TEXT("Static"), TEXT("Received"), WS_CHILD | WS_VISIBLE, rect.left + 30, rect.top + 10, 80, 15, this->hwndMain, NULL, NULL, NULL);
-    StaticControl = CreateWindowEx(NULL, TEXT("Static"), TEXT("Send"), WS_CHILD | WS_VISIBLE, rect.left + 400, rect.top + 10, 50, 15, this->hwndMain, NULL, NULL, NULL);
+    recvLabel = CreateWindowEx(NULL, TEXT("Static"), TEXT("Received"), WS_CHILD | WS_VISIBLE, rect.left + 30, rect.top + 10, 80, 15, this->hwndMain, NULL, NULL, NULL);
+    sendLabel = CreateWindowEx(NULL, TEXT("Static"), TEXT("Send"), WS_CHILD | WS_VISIBLE, rect.left + 400, rect.top + 10, 50, 15, this->hwndMain, NULL, NULL, NULL);
 
-    recvButton = CreateWindow(L"BUTTON", L"Receive", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, rect.left + 110, 400, 120, 30, this->hwndMain, NULL, NULL, NULL);
-    sendButton = CreateWindow(L"BUTTON", L"Send", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, rect.left + 495, 400, 120, 30, this->hwndMain, NULL, NULL, NULL);
+    sendDecoded = CreateWindowEx(NULL, TEXT("Static"), TEXT("Send decoded will be shown here"), WS_CHILD | WS_VISIBLE, rect.left + 400, 300, 300, 30, this->hwndMain, NULL, NULL, NULL);
+
+    recvButton = CreateWindow(L"BUTTON", L"Receive", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, rect.left + 110, 350, 120, 30, this->hwndMain, NULL, NULL, NULL);
+    sendButton = CreateWindow(L"BUTTON", L"Send", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, rect.left + 490, 350, 120, 30, this->hwndMain, NULL, NULL, NULL);
 
 }
 
